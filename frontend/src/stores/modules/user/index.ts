@@ -13,6 +13,7 @@ export const useUserStore = defineStore(
     const userTokenCookieName = '_U';
     const userKievRPSSecAuthCookieName = 'KievRPSSecAuth';
     const userRwBfCookieName = '_RwBf';
+    const userMUIDCookieName = 'MUID';
     const randIpCookieName = 'BingAI_Rand_IP';
     const authKeyCookieName = 'BingAI_Auth_Key';
     const cookiesStr = ref('');
@@ -66,6 +67,7 @@ export const useUserStore = defineStore(
     };
 
     const checkUserToken = () => {
+      cookies.set(userMUIDCookieName, '3AC75B6BED5B6C3B03384913EC756D93', 365 * 24 * 60, '/')
       if (historyEnable.value) {
         CIB.vm.sidePanel.isVisibleDesktop = true;
         document.querySelector('cib-serp')?.setAttribute('alignment', 'left');
@@ -135,10 +137,10 @@ export const useUserStore = defineStore(
     };
 
     const resetCache = async () => {
-      const keys = document.cookie.match(/[^ =;]+(?=\=)/g);
+      const keys = document.cookie.split(";");
       if (keys) {
         for (let i = keys.length; i--;)
-          document.cookie = keys[i] + '=0;expires=' + new Date(0).toUTCString()
+          document.cookie = keys[i].split('=')[0] + '=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
       }
       await clearCache();
     };
