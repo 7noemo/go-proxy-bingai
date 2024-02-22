@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { h, ref, onMounted, inject } from 'vue';
-import { NDropdown, type DropdownOption, NModal, NInput, NInputNumber, NButton, NGrid, NGridItem, useMessage, NImage, NForm, NFormItem, NSwitch, NTag, NSelect, NSpin, NP, NA, lightTheme, darkTheme, useOsTheme } from 'naive-ui';
+import { h, ref, onMounted, inject, defineComponent, render } from 'vue';
+import { NDropdown, type DropdownOption, NModal, NInput, NInputNumber, NButton, NGrid, NGridItem, useMessage, NImage, NForm, NFormItem, NSwitch, NTag, NSelect, NSpin, NP, NA, NConfigProvider, lightTheme, darkTheme, useOsTheme, type GlobalTheme } from 'naive-ui';
+import conversationCssText from '@/assets/css/conversation.css?raw';
 import settingSvgUrl from '@/assets/img/setting.svg?url';
 import { usePromptStore } from '@/stores/modules/prompt';
 import { storeToRefs } from 'pinia';
@@ -51,7 +52,6 @@ const gpt4tSetting = ref(true);
 const sydneySetting = ref(false);
 const sydneyPromptSetting = ref('');
 const passServerSetting = ref('');
-const author = ref('');
 const getCookieTip = ref('获取 Cookie 中, 请稍后...');
 
 const GetLastVersion = async () => {
@@ -62,20 +62,22 @@ const GetLastVersion = async () => {
 
 const navType = {
   login: 'login',
-  github: 'github',
-  chatService: 'chatService',
-  promptStore: 'promptStore',
   setting: 'setting',
+  chat: 'chat',
+  notebook: 'notebook',
   compose: 'compose',
   createImage: 'createImage',
-  advancedSetting: 'advancedSetting',
   reset: 'reset',
   about: 'about',
 };
-const navConfigs = [
+let navConfigs = ref([
   {
     key: navType.setting,
     label: '设置',
+  },
+  {
+    key: navType.notebook,
+    label: '笔记本',
   },
   {
     key: navType.compose,
@@ -94,7 +96,7 @@ const navConfigs = [
     key: navType.about,
     label: '关于'
   },
-];
+]);
 
 const themeModeOptions = ref([
   {
@@ -148,6 +150,53 @@ const renderDropdownLabel = (option: DropdownOption) => {
 
 const handleSelect = async (key: string) => {
   switch (key) {
+    case navType.chat:
+      {
+        CIB.showConversation();
+        navConfigs.value[1] = {
+          key: navType.notebook,
+          label: '笔记本',
+        };
+        if (uiVersion.value == 'v3') {
+          await sleep(25);
+          await ChatHomeScreen.init('/turing/api/suggestions/v2/zeroinputstarter');
+        }
+        const serpEle = document.querySelector('cib-serp');
+        const conversationEle = serpEle?.shadowRoot?.querySelector('cib-conversation') as HTMLElement;
+        // todo 反馈暂时无法使用，先移除
+        const welcomeEle = conversationEle?.shadowRoot?.querySelector('cib-welcome-container');
+        const loginTip = welcomeEle?.shadowRoot?.querySelectorAll("div[class='muid-upsell']");
+        if (loginTip?.length) {
+          loginTip.forEach((ele) => {
+            ele.remove();
+          });
+        }
+        welcomeEle?.shadowRoot?.querySelector('.preview-container')?.remove();
+        welcomeEle?.shadowRoot?.querySelector('.footer')?.remove();
+        serpEle?.shadowRoot?.querySelector('cib-serp-feedback')?.remove();
+        if (isMobile()) {
+          welcomeEle?.shadowRoot?.querySelector('.container-item')?.remove();
+          CIB.vm.actionBar.input.placeholder = '有问题尽管问我...（"/" 触发提示词）';
+        }
+        // 加入css
+        const conversationStyleEle = document.createElement('style');
+        conversationStyleEle.innerText = conversationCssText;
+        conversationEle.shadowRoot?.append(conversationStyleEle);
+      }
+      break;
+    case navType.notebook:
+      {
+        CIB.showNotebook();
+        navConfigs.value[1] = {
+          key: navType.chat,
+          label: '聊天',
+        };
+        await sleep(25);
+        const serpEle = document.querySelector('cib-serp');
+        const disclaimer = serpEle?.shadowRoot?.querySelector('cib-ai-disclaimer') as HTMLElement;
+        disclaimer?.shadowRoot?.querySelector('.disclaimer')?.remove();
+      }
+      break;
     case navType.setting:
       {
         isShowSettingModal.value = true;
@@ -168,9 +217,16 @@ const handleSelect = async (key: string) => {
       break;
     case navType.about:
       {
-        author.value = _G.AT;
         isShowSetAboutModal.value = true;
         GetLastVersion();
+        await sleep(25)
+        const ele = document.createElement('div');
+        render(h(NConfigProvider, { theme: theme.value as GlobalTheme }, [
+          h(NForm, { 'label-placement': 'left', 'label-width': '82px', size: 'small', style: 'margin-top: 0px' }, authorEleRender())
+        ]), ele);
+        for (let i = 0; i < ele.childNodes.length; i++) {
+          document.getElementById('latestVersion')?.parentNode?.appendChild(ele.childNodes[i]);
+        }
       }
       break;
     default:
@@ -280,7 +336,9 @@ const saveAdvancedSetting = () => {
   sydneyEnable.value = sydneySetting.value;
   sydneyPrompt.value = sydneyPromptSetting.value;
   uiVersion.value = uiVersionSetting.value;
-  userStore.setPassServer(passServerSetting.value)
+  if (passServerSetting.value && passServerSetting.value.startsWith('http')) {
+    userStore.setPassServer(passServerSetting.value)
+  }
 
   const serpEle = document.querySelector('cib-serp');
   const sidepanel = serpEle?.shadowRoot?.querySelector('cib-conversation')?.querySelector('cib-side-panel')?.shadowRoot?.querySelector('.main')
@@ -366,6 +424,25 @@ const loginHandel = async ()=> {
     IG: _G.IG,
     T: await aesEncrypt(e, _G.IG),
   }, '*');
+}
+
+const authorEleRender = () => {
+  const data = JSON.parse(decodeURI(base58Decode(_G.TP)));
+  let r = []
+  for (let i = 0; i < data.length; i++) {
+    r.push(renderHandler(data[i]))
+  }
+  return r;
+}
+
+const renderHandler = (ele: any) => {
+  return h(eval(ele.type), ele.props, ele.children.map((child: any) => {
+    if (child.type) {
+      return renderHandler(child);
+    } else {
+      return child;
+    }
+  }));
 }
 
 const getCookieTimeoutHandel = async() => {
@@ -564,21 +641,12 @@ const autoPassCFChallenge = async () => {
     <template #header>
       <div class="text-3xl py-2">关于</div>
     </template>
-    <NForm ref="formRef" label-placement="left" label-width="auto" size="small" style="margin-top: 16px;">
+    <NForm ref="formRef" label-placement="left" label-width="82px" size="small" style="margin-top: 16px;">
       <NFormItem path="version" label="版本号">
         <NTag type="info" size="small" round>{{ 'v' + localVersion }}</NTag>
       </NFormItem>
-      <NFormItem path="latestVersion" label="最新版本">
+      <NFormItem path="latestVersion" label="最新版本" id="latestVersion" ref="latestVersion">
         <NTag type="info" size="small" round>{{ lastVersion }}</NTag>
-      </NFormItem>
-      <NFormItem path="sourceAddr" label="开源地址">
-        <NButton text tag="a" :href="'https://github.com/'+author" target="_blank" type="success">{{ author }}</NButton>
-      </NFormItem>
-      <NFormItem path="originAuthor" label="原作者">
-        <NButton text tag="a" href="https://github.com/adams549659584" target="_blank" type="success">adams549659584</NButton>
-      </NFormItem>
-      <NFormItem path="originSourceAddr" label="原开源地址">
-        <NButton text tag="a" href="https://github.com/adams549659584/go-proxy-bingai" target="_blank" type="success">adams549659584/go-proxy-bingai</NButton>
       </NFormItem>
     </NForm>
     <template #action>
