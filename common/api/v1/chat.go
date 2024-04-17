@@ -4,7 +4,6 @@ import (
 	"adams549659584/go-proxy-bingai/common"
 	"encoding/json"
 	"io"
-	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -21,6 +20,8 @@ var (
 
 	GPT_35_TURBO_16K = "gpt-3.5-turbo-16k"
 	GPT_4_32K        = "gpt-4-32k"
+
+	GPT_4_VISION = "gpt-4-vision-preview"
 
 	STOPFLAG = "stop"
 )
@@ -54,14 +55,7 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 
 	cookie := r.Header.Get("Cookie")
 	if cookie == "" || !strings.Contains(cookie, "_U=") {
-		if len(common.USER_TOKEN_LIST) > 0 {
-			seed := time.Now().UnixNano()
-			rng := rand.New(rand.NewSource(seed))
-			cookie = common.USER_TOKEN_LIST[rng.Intn(len(common.USER_TOKEN_LIST))]
-			chat.SetCookies(cookie)
-		} else {
-			cookie = chat.GetCookies()
-		}
+		cookie = chat.GetCookies()
 	}
 	chat.SetCookies(cookie)
 
@@ -69,14 +63,15 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
+		common.Logger.Error("ReadAll Error: %v", err)
 		return
 	}
 
 	var resq chatRequest
 	json.Unmarshal(resqB, &resq)
 
-	if !common.IsInArray(binglib.ChatModels[:], resq.Model) {
-		if !common.IsInArray([]string{GPT_35_TURBO, GPT_4_TURBO_PREVIEW, GPT_35_TURBO_16K, GPT_4_32K}, resq.Model) {
+	if !common.IsInArray(binglib.ChatModels[:], strings.ReplaceAll(resq.Model, "-vision", "")) {
+		if !common.IsInArray([]string{GPT_35_TURBO, GPT_4_TURBO_PREVIEW, GPT_35_TURBO_16K, GPT_4_32K, GPT_4_VISION}, resq.Model) {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("Model Not Found"))
 			return
@@ -122,18 +117,37 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 				resq.Model = binglib.CREATIVE_G4T_18K
 			}
 		}
+
+		if resq.Model == GPT_4_VISION {
+			if resq.Temperature <= 0.75 {
+				resq.Model = binglib.PRECISE_G4T + "-vision"
+			} else if resq.Temperature > 0.75 && resq.Temperature < 1.25 {
+				resq.Model = binglib.BALANCED_G4T + "-vision"
+			} else if resq.Temperature >= 1.25 {
+				resq.Model = binglib.CREATIVE_G4T + "-vision"
+			}
+		}
 	}
 
 	err = chat.NewConversation()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
+		common.Logger.Error("NewConversation Error: %v", err)
 		return
 	}
 
-	chat.SetStyle(resq.Model)
+	chat.SetStyle(strings.ReplaceAll(resq.Model, "-vision", ""))
 
-	prompt, msg := chat.MsgComposer(resq.Messages)
+	prompt, msg, image := chat.MsgComposer(resq.Messages)
+
+	if !strings.Contains(resq.Model, "-vision") && image != "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Image is not supported in this model"))
+		common.Logger.Error("Chat Error: Image is not supported in this model")
+		return
+	}
+
 	resp := chatResponse{
 		Id:                "chatcmpl-NewBing",
 		Object:            "chat.completion.chunk",
@@ -152,7 +166,8 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		text := make(chan string)
-		go chat.ChatStream(prompt, msg, text)
+		defer close(text)
+		go chat.ChatStream(prompt, msg, text, image)
 		var tmp string
 
 		for {
@@ -173,6 +188,7 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
 					w.Write([]byte(err.Error()))
+					common.Logger.Error("Marshal Error: %v", err)
 					return
 				}
 				w.Write([]byte("data: "))
@@ -185,6 +201,7 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte(err.Error()))
+				common.Logger.Error("Marshal Error: %v", err)
 				return
 			}
 			w.Write([]byte("data: "))
@@ -204,10 +221,11 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("data: [DONE]\n"))
 		flusher.Flush()
 	} else {
-		text, err := chat.Chat(prompt, msg)
+		text, err := chat.Chat(prompt, msg, image)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
+			common.Logger.Error("Chat Error: %v", err)
 			return
 		}
 
@@ -224,9 +242,11 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
+			common.Logger.Error("Marshal Error: %v", err)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
 		w.Write(resData)
 
 		if (text == "User needs to solve CAPTCHA to continue." || text == "Request is throttled." || text == "Unknown error.") && common.BypassServer != "" && r.Header.Get("Cookie") == "" {

@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"adams549659584/go-proxy-bingai/common"
 	"encoding/json"
 	"net/http"
 
@@ -51,10 +52,21 @@ func ModelsHandler(w http.ResponseWriter, r *http.Request) {
 			Created: 1687579610,
 			OwnedBy: "Go-Proxy-BingAI",
 		},
+		{
+			Id:      GPT_4_VISION,
+			Object:  "model",
+			Created: 1687579610,
+			OwnedBy: "Go-Proxy-BingAI",
+		},
 	}
 	for _, model := range binglib.ChatModels {
 		models = append(models, modelStruct{
 			Id:      model,
+			Object:  "model",
+			Created: 1687579610,
+			OwnedBy: "Go-Proxy-BingAI",
+		}, modelStruct{
+			Id:      model + "-vision",
 			Object:  "model",
 			Created: 1687579610,
 			OwnedBy: "Go-Proxy-BingAI",
@@ -69,8 +81,10 @@ func ModelsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
+		common.Logger.Error("ModelsHandler Marshal Error: %v", err)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(respData)
 }

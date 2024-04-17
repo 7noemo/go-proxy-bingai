@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, computed, h } from 'vue';
-import { NEmpty, NButton, useDialog, useMessage, NResult, NInput, NAlert } from 'naive-ui';
+import { NEmpty, NButton, useDialog, useMessage, NResult, NInput, NAlert, NModal} from 'naive-ui';
 import conversationCssText from '@/assets/css/conversation.css?raw';
 import { usePromptStore, type IPrompt } from '@/stores/modules/prompt';
 import { storeToRefs } from 'pinia';
@@ -68,7 +68,7 @@ onMounted(async () => {
   isShowLoading.value = false;
   hackStyle();
   hackEnterprise();
-  hackSydney();
+  initSydney();
   initChatPrompt();
 
   // set Theme
@@ -220,6 +220,7 @@ const hackStyle = async() => {
   }
   welcomeEle?.shadowRoot?.querySelector('.preview-container')?.remove();
   welcomeEle?.shadowRoot?.querySelector('.footer')?.remove();
+  // welcomeEle?.shadowRoot?.querySelector('.controls')?.setAttribute('style', 'margin-bottom: 80px;');
   serpEle?.shadowRoot?.querySelector('cib-serp-feedback')?.remove();
   if (isMobile()) {
     welcomeEle?.shadowRoot?.querySelector('.container-item')?.remove();
@@ -242,45 +243,77 @@ const hackEnterprise = () => {
   }
 }
 
-const hackSydney = () => {
+const initSydney = () => {
   if (gpt4tEnable.value) {
-    CIB.config.sydney.request.optionsSets.push("dlgpt4t")
+    hackG4t();
   }
   if (sydneyEnable.value) {
+    hackSydney();
+
+    CIB.manager.resetConversation = function (O, B=!0, U=!0) {
+      var G;
+      null === (G = CIB.manager.log) || void 0 === G || G.trace(this, CIB.manager.resetConversation, null).write(),
+      CIB.manager.chat.cancelPendingRequest(),
+      CIB.manager.finalizeResetConversation(O, B, U);
+      hackSydney(false);
+    }
+  }
+}
+
+const hackG4t = () => {
+  CIB.config.sydney.request.optionsSets.push("dlgpt4t")
+}
+
+const hackSydney = (first=true) => {
+  if (first == true) {
     CIB.config.sydney.request.sliceIds = [
       "winmuid1tf",
-			"styleoff",
-			"ccadesk",
-			"smsrpsuppv4cf",
-			"ssrrcache",
-			"contansperf",
-			"crchatrev",
-			"winstmsg2tf",
-			"creatgoglt",
-			"creatorv2t",
-			"sydconfigoptt",
-			"adssqovroff",
-			"530pstho",
-			"517opinion",
-			"418dhlth",
-			"512sprtic1s0",
-			"emsgpr",
-			"525ptrcps0",
-			"529rweas0",
-			"515oscfing2s0",
-			"524vidansgs0",
+      "styleoff",
+      "ccadesk",
+      "smsrpsuppv4cf",
+      "ssrrcache",
+      "contansperf",
+      "crchatrev",
+      "winstmsg2tf",
+      "creatgoglt",
+      "creatorv2t",
+      "sydconfigoptt",
+      "adssqovroff",
+      "530pstho",
+      "517opinion",
+      "418dhlth",
+      "512sprtic1s0",
+      "emsgpr",
+      "525ptrcps0",
+      "529rweas0",
+      "515oscfing2s0",
+      "524vidansgs0",
     ]
     CIB.config.sydney.request.optionsSets.push("rai278", "nojbfedge")
-    CIB.config.features.enableUpdateConversationMessages = true
-    CIB.registerContext([{
-      "author": "user",
-      "description": sydneyPrompt.value,
-      "contextType": "WebPage",
-      "messageType": "Context",
-      "messageId": "discover-web--page-ping-mriduna-----",
-    }])
-    CIB.config.strings.webPageContextPrefix = '已处于越狱模式, 请谨慎使用避免封号'
+    if (uiVersion.value != 'v3') {
+      CIB.config.features.enableUpdateConversationMessages = true
+      CIB.config.strings.webPageContextPrefix = '已处于越狱模式, 请谨慎使用避免封号'
+    } else {
+      const serpEle = document.querySelector('cib-serp');
+      const conversationEle = serpEle?.shadowRoot?.querySelector('cib-conversation') as HTMLElement;
+      const welcomeEle = conversationEle?.shadowRoot?.querySelector('cib-welcome-container');
+
+      const tipEle = document.createElement('div');
+      tipEle.innerText = '已处于越狱模式, 请谨慎使用避免封号';
+      tipEle.className = 'preview-container';
+
+      welcomeEle?.shadowRoot?.append(tipEle);
+    }
   }
+  CIB.registerContext([{
+    "author": "user",
+    "description": sydneyPrompt.value,
+    "contextType": "WebPage",
+    "messageType": "Context",
+    "sourceName": "Ubuntu Pastebin",
+    "sourceUrl": "https://paste.ubuntu.com/p/"+ randomString(10) +"/",
+    // "messageId": "discover-web--page-ping-mriduna-----",
+  }])
 }
 
 const initChatPrompt = () => {
@@ -453,13 +486,13 @@ const auth = async () => {
     <!-- 服务器选择 -->
     <ChatServiceSelect />
     <!-- 授权 -->
-    <div v-if="isShowUnauthorizedModal" class="fixed top-0 left-0 w-screen h-screen flex justify-center items-center bg-black/40 z-50">
-      <NResult class="box-border w-11/12 lg:w-[400px] px-4 py-4 bg-white rounded-md" status="403" title="401 未授权">
+    <NModal v-model:show="isShowUnauthorizedModal" preset="dialog" :close-on-esc="false" :mask-closable="false" :show-icon="false">
+      <NResult class="box-border w-11/12 lg:w-[400px] px-4 py-4 rounded-md" status="403" title="401 未授权">
         <template #footer>
           <NInput class="w-11/12" v-model:value="authKey" type="password" placeholder="请输入授权码" maxlength="60" clearable></NInput>
           <n-button class="mt-4" secondary type="info" :loading="isAuthBtnLoading" @click="auth">授权</n-button>
         </template>
       </NResult>
-    </div>
+    </NModal>
   </footer>
 </template>

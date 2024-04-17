@@ -10,6 +10,7 @@ declare const ChatHomeScreen: {
 };
 
 declare const _G: {
+  Region: string;
   IG: string;
   S: string;
   SP: Array<number>;
@@ -20,6 +21,9 @@ declare const _G: {
   AT: string;
 }
 
+declare const randomString: (n: number) => string;
+declare const randomLowercaseString: (n: number) => string;
+declare const randomCapitalString: (n: number) => string;
 declare const base58Encode: (n: string) => string;
 declare const base58Decode: (n: string) => string;
 declare const aesEncrypt: (n: string, t: string) => string;
@@ -128,6 +132,8 @@ interface BingChat {
   onRequestGenerated: PublicSubscribeEvent;
   onResponseRendered: PublicSubscribeEvent;
   onStreamingComplete: PublicSubscribeEvent;
+
+  cancelPendingRequest: () => {};
 }
 
 interface BingConversation {
@@ -292,16 +298,18 @@ declare const CIB: {
       baseUrl: string;
     }
     strings: {
-        webPageContextPrefix: string;
+      webPageContextPrefix: string;
     }
   };
   manager: {
     chat: BingChat;
     conversation: BingConversation;
+    log: any;
     /**
      * 重置聊天
      */
-    resetConversation: () => {};
+    resetConversation: (O: BingMessage, B?: boolean, U?: boolean) => void;
+    finalizeResetConversation: (O: BingMessage, B?: boolean, U?: boolean) => {};
 
     /**
      * 发送消息
@@ -314,6 +322,7 @@ declare const CIB: {
     sendMessage: (O: BingMessage, B?: boolean, G?: BingMessageType, U?: 'Keyboard' | 'Speech') => {};
 
     onResetConversationInvoked: PublicSubscribeEvent;
+    
   };
 
   onConsentGiven: PublicSubscribeEvent;
@@ -341,4 +350,7 @@ declare const CIB: {
   registerContext: (O) => {};
   showConversation: () => {};
   showNotebook: () => {};
+  resetConversationtmp: () => void;
+  resetConversation: () => void;
+  resetConversationAsync: () => Promise<any>;
 };
